@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
+import { IsEmail, IsMongoId, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class LoginUserDto {
   @IsEmail()
@@ -7,4 +7,9 @@ export class LoginUserDto {
   @IsString()
   @IsNotEmpty()
   public password: string;
+
+  // Organization to scope the token to (required when the user belongs to several)
+  @IsOptional()
+  @IsMongoId()
+  public organization_id?: string;
 }

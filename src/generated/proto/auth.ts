@@ -11,8 +11,8 @@ import { Observable } from "rxjs";
 export const protobufPackage = "auth";
 
 /**
- * owner: whole system + role management. admin: full access to products, alerts
- * and purchase orders. user: read-only plus stock movements (entrada / salida)
+ * Role inside an organization. owner: whole organization + role management. admin: full
+ * access to products, alerts and purchase orders. user: read-only plus stock movements
  */
 export enum Role {
   user = "user",
@@ -21,21 +21,29 @@ export enum Role {
   UNRECOGNIZED = "UNRECOGNIZED",
 }
 
-export interface RegisterUserRequest {
-  name: string;
-  email: string;
-  password: string;
-  /** Role of the new user (defaults to user) */
-  role?:
-    | Role
-    | undefined;
-  /** Role of the authenticated caller who registers the user */
-  requester_role: Role;
+/** Role on the whole platform, above organizations */
+export enum PlatformRole {
+  superadmin = "superadmin",
+  UNRECOGNIZED = "UNRECOGNIZED",
+}
+
+/** A SUSPENDED organization rejects every token scoped to it */
+export enum OrganizationStatus {
+  ACTIVE = "ACTIVE",
+  SUSPENDED = "SUSPENDED",
+  UNRECOGNIZED = "UNRECOGNIZED",
 }
 
 export interface LoginUserRequest {
   email: string;
   password: string;
+  organization_id?: string | undefined;
+}
+
+export interface SwitchOrganizationRequest {
+  /** Id of the authenticated caller */
+  requester_id: string;
+  organization_id: string;
 }
 
 export interface VerifyRequest {
@@ -45,21 +53,98 @@ export interface VerifyRequest {
 export interface UpdateUserRoleRequest {
   user_id: string;
   role: Role;
-  /** Id of the authenticated caller; auth-ms checks it is an owner */
+  /** Id of the authenticated caller and its active organization; auth-ms checks it owns it */
   requester_id: string;
+  organization_id: string;
 }
 
-/** Never carries the password hash */
+/**
+ * Never carries the password hash. organization_id and role describe the organization the
+ * token is scoped to (absent when it has none)
+ */
 export interface User {
   id: string;
   name: string;
   email: string;
+  platform_role?: PlatformRole | undefined;
+  organization_id?: string | undefined;
+  role?: Role | undefined;
+}
+
+/** An active organization the user belongs to (LoginUser lists them to pick one) */
+export interface Membership {
+  organization_id: string;
+  organization_name: string;
+  organization_slug: string;
   role: Role;
 }
 
 export interface AuthResponse {
   user: User | undefined;
   token: string;
+  memberships: Membership[];
+}
+
+export interface CreateOrganizationRequest {
+  requester_id: string;
+  name: string;
+  /** Lowercase letters, numbers and dashes; unique */
+  slug: string;
+}
+
+export interface FindOrganizationsRequest {
+  requester_id: string;
+}
+
+export interface OrganizationById {
+  requester_id: string;
+  id: string;
+}
+
+export interface UpdateOrganizationStatusRequest {
+  requester_id: string;
+  id: string;
+  status: OrganizationStatus;
+}
+
+export interface AddMemberRequest {
+  requester_id: string;
+  organization_id: string;
+  email: string;
+  role: Role;
+  /** Only used (and then required) when no user has this email yet */
+  name?: string | undefined;
+  password?: string | undefined;
+}
+
+export interface RemoveMemberRequest {
+  requester_id: string;
+  organization_id: string;
+  user_id: string;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  status: OrganizationStatus;
+  createdAt: string;
+}
+
+export interface OrganizationList {
+  data: Organization[];
+}
+
+export interface Member {
+  user_id: string;
+  name: string;
+  email: string;
+  organization_id: string;
+  role: Role;
+}
+
+export interface MemberList {
+  data: Member[];
 }
 
 export const AUTH_PACKAGE_NAME = "auth";
@@ -71,19 +156,25 @@ export const AUTH_PACKAGE_NAME = "auth";
 
 export interface AuthServiceClient {
   /**
-   * Only owner/admin may register users (client-gateway checks the caller's role
-   * and sends it as requester_role; auth-ms enforces which roles each one may create)
+   * With organization_id the token is scoped to it. Without it, a user with exactly one
+   * membership gets a token for that organization; otherwise the token has no organization
+   * (superadmin, or a user who must pick one with SwitchOrganization)
    */
-
-  registerUser(request: RegisterUserRequest): Observable<AuthResponse>;
 
   loginUser(request: LoginUserRequest): Observable<AuthResponse>;
 
-  /** Validates the token, reloads the user (current role) and returns it with a freshly signed token */
+  /** Returns a token scoped to another organization the caller belongs to */
+
+  switchOrganization(request: SwitchOrganizationRequest): Observable<AuthResponse>;
+
+  /**
+   * Validates the token, reloads the user, membership and organization (current role and
+   * status) and returns them with a freshly signed token
+   */
 
   verify(request: VerifyRequest): Observable<AuthResponse>;
 
-  /** Owner only: changes another user's role */
+  /** Owner of the organization only: changes another member's role in it */
 
   updateUserRole(request: UpdateUserRoleRequest): Observable<User>;
 }
@@ -95,26 +186,34 @@ export interface AuthServiceClient {
 
 export interface AuthServiceController {
   /**
-   * Only owner/admin may register users (client-gateway checks the caller's role
-   * and sends it as requester_role; auth-ms enforces which roles each one may create)
+   * With organization_id the token is scoped to it. Without it, a user with exactly one
+   * membership gets a token for that organization; otherwise the token has no organization
+   * (superadmin, or a user who must pick one with SwitchOrganization)
    */
-
-  registerUser(request: RegisterUserRequest): Promise<AuthResponse> | Observable<AuthResponse> | AuthResponse;
 
   loginUser(request: LoginUserRequest): Promise<AuthResponse> | Observable<AuthResponse> | AuthResponse;
 
-  /** Validates the token, reloads the user (current role) and returns it with a freshly signed token */
+  /** Returns a token scoped to another organization the caller belongs to */
+
+  switchOrganization(
+    request: SwitchOrganizationRequest,
+  ): Promise<AuthResponse> | Observable<AuthResponse> | AuthResponse;
+
+  /**
+   * Validates the token, reloads the user, membership and organization (current role and
+   * status) and returns them with a freshly signed token
+   */
 
   verify(request: VerifyRequest): Promise<AuthResponse> | Observable<AuthResponse> | AuthResponse;
 
-  /** Owner only: changes another user's role */
+  /** Owner of the organization only: changes another member's role in it */
 
   updateUserRole(request: UpdateUserRoleRequest): Promise<User> | Observable<User> | User;
 }
 
 export function AuthServiceControllerMethods() {
   return function (constructor: Function) {
-    const grpcMethods: string[] = ["registerUser", "loginUser", "verify", "updateUserRole"];
+    const grpcMethods: string[] = ["loginUser", "switchOrganization", "verify", "updateUserRole"];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
       GrpcMethod("AuthService", method)(constructor.prototype[method], method, descriptor);
@@ -130,3 +229,78 @@ export function AuthServiceControllerMethods() {
 }
 
 export const AUTH_SERVICE_NAME = "AuthService";
+
+/** Platform superadmin only (auth-ms checks requester_id against the database) */
+
+export interface OrganizationsServiceClient {
+  create(request: CreateOrganizationRequest): Observable<Organization>;
+
+  /** Every organization, newest first */
+
+  findAll(request: FindOrganizationsRequest): Observable<OrganizationList>;
+
+  findOne(request: OrganizationById): Observable<Organization>;
+
+  updateStatus(request: UpdateOrganizationStatusRequest): Observable<Organization>;
+
+  /** Creates the user when the email is unknown (password required), then the membership */
+
+  addMember(request: AddMemberRequest): Observable<Member>;
+
+  findMembers(request: OrganizationById): Observable<MemberList>;
+
+  removeMember(request: RemoveMemberRequest): Observable<Member>;
+}
+
+/** Platform superadmin only (auth-ms checks requester_id against the database) */
+
+export interface OrganizationsServiceController {
+  create(request: CreateOrganizationRequest): Promise<Organization> | Observable<Organization> | Organization;
+
+  /** Every organization, newest first */
+
+  findAll(
+    request: FindOrganizationsRequest,
+  ): Promise<OrganizationList> | Observable<OrganizationList> | OrganizationList;
+
+  findOne(request: OrganizationById): Promise<Organization> | Observable<Organization> | Organization;
+
+  updateStatus(
+    request: UpdateOrganizationStatusRequest,
+  ): Promise<Organization> | Observable<Organization> | Organization;
+
+  /** Creates the user when the email is unknown (password required), then the membership */
+
+  addMember(request: AddMemberRequest): Promise<Member> | Observable<Member> | Member;
+
+  findMembers(request: OrganizationById): Promise<MemberList> | Observable<MemberList> | MemberList;
+
+  removeMember(request: RemoveMemberRequest): Promise<Member> | Observable<Member> | Member;
+}
+
+export function OrganizationsServiceControllerMethods() {
+  return function (constructor: Function) {
+    const grpcMethods: string[] = [
+      "create",
+      "findAll",
+      "findOne",
+      "updateStatus",
+      "addMember",
+      "findMembers",
+      "removeMember",
+    ];
+    for (const method of grpcMethods) {
+      const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
+      GrpcMethod("OrganizationsService", method)(constructor.prototype[method], method, descriptor);
+      Object.defineProperty(constructor.prototype, method, descriptor);
+    }
+    const grpcStreamMethods: string[] = [];
+    for (const method of grpcStreamMethods) {
+      const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
+      GrpcStreamMethod("OrganizationsService", method)(constructor.prototype[method], method, descriptor);
+      Object.defineProperty(constructor.prototype, method, descriptor);
+    }
+  };
+}
+
+export const ORGANIZATIONS_SERVICE_NAME = "OrganizationsService";

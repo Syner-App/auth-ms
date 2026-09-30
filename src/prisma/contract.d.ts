@@ -18,7 +18,7 @@ import type {
 } from '@prisma/orm-mongo/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'77b2b74fc1976a4e87172d208ca50a199e039d9b14149c56b75c4efb674a0be8'>;
+  StorageHashBase<'90ae5f43f1a055959c892402178ffb833762879b601af6a2d1f73776f73e6a5d'>;
 export type ExecutionHash = ExecutionHashBase<string>;
 export type ProfileHash =
   ProfileHashBase<'251b3ce23f6c9f561892e7c1af9d2cc941a13d64ba1aa7226b90036b09568cc3'>;
@@ -27,43 +27,89 @@ export type CodecTypes = MongoCodecTypes;
 
 export type FieldOutputTypes = {
   readonly __unbound__: {
+    readonly Membership: {
+      readonly _id: CodecTypes['mongo/objectId@1']['output'];
+      readonly createdAt: CodecTypes['mongo/date@1']['output'];
+      readonly organization_id: CodecTypes['mongo/objectId@1']['output'];
+      readonly role: CodecTypes['mongo/string@1']['output'];
+      readonly user_id: CodecTypes['mongo/objectId@1']['output'];
+    };
+    readonly Organization: {
+      readonly _id: CodecTypes['mongo/objectId@1']['output'];
+      readonly createdAt: CodecTypes['mongo/date@1']['output'];
+      readonly name: CodecTypes['mongo/string@1']['output'];
+      readonly slug: CodecTypes['mongo/string@1']['output'];
+      readonly status: CodecTypes['mongo/string@1']['output'];
+    };
     readonly User: {
       readonly _id: CodecTypes['mongo/objectId@1']['output'];
       readonly createdAt: CodecTypes['mongo/date@1']['output'];
       readonly email: CodecTypes['mongo/string@1']['output'];
       readonly name: CodecTypes['mongo/string@1']['output'];
       readonly password: CodecTypes['mongo/string@1']['output'];
-      readonly role: CodecTypes['mongo/string@1']['output'] | null;
+      readonly platform_role: CodecTypes['mongo/string@1']['output'] | null;
     };
   };
 };
 export type FieldInputTypes = {
   readonly __unbound__: {
+    readonly Membership: {
+      readonly _id: CodecTypes['mongo/objectId@1']['input'];
+      readonly createdAt: CodecTypes['mongo/date@1']['input'];
+      readonly organization_id: CodecTypes['mongo/objectId@1']['input'];
+      readonly role: CodecTypes['mongo/string@1']['input'];
+      readonly user_id: CodecTypes['mongo/objectId@1']['input'];
+    };
+    readonly Organization: {
+      readonly _id: CodecTypes['mongo/objectId@1']['input'];
+      readonly createdAt: CodecTypes['mongo/date@1']['input'];
+      readonly name: CodecTypes['mongo/string@1']['input'];
+      readonly slug: CodecTypes['mongo/string@1']['input'];
+      readonly status: CodecTypes['mongo/string@1']['input'];
+    };
     readonly User: {
       readonly _id: CodecTypes['mongo/objectId@1']['input'];
       readonly createdAt: CodecTypes['mongo/date@1']['input'];
       readonly email: CodecTypes['mongo/string@1']['input'];
       readonly name: CodecTypes['mongo/string@1']['input'];
       readonly password: CodecTypes['mongo/string@1']['input'];
-      readonly role: CodecTypes['mongo/string@1']['input'] | null;
+      readonly platform_role: CodecTypes['mongo/string@1']['input'] | null;
     };
   };
 };
 
 export namespace Models {
+  export type unbound_Membership = {
+    _id: CodecTypes['mongo/objectId@1']['output'];
+    createdAt: CodecTypes['mongo/date@1']['output'];
+    organization_id: CodecTypes['mongo/objectId@1']['output'];
+    role: CodecTypes['mongo/string@1']['output'];
+    user_id: CodecTypes['mongo/objectId@1']['output'];
+    readonly [RelationKeys]?: never;
+  };
+  export type unbound_Organization = {
+    _id: CodecTypes['mongo/objectId@1']['output'];
+    createdAt: CodecTypes['mongo/date@1']['output'];
+    name: CodecTypes['mongo/string@1']['output'];
+    slug: CodecTypes['mongo/string@1']['output'];
+    status: CodecTypes['mongo/string@1']['output'];
+    readonly [RelationKeys]?: never;
+  };
   export type unbound_User = {
     _id: CodecTypes['mongo/objectId@1']['output'];
     createdAt: CodecTypes['mongo/date@1']['output'];
     email: CodecTypes['mongo/string@1']['output'];
     name: CodecTypes['mongo/string@1']['output'];
     password: CodecTypes['mongo/string@1']['output'];
-    role: CodecTypes['mongo/string@1']['output'] | null;
+    platform_role: CodecTypes['mongo/string@1']['output'] | null;
     readonly [RelationKeys]?: never;
   };
 }
 
 export declare const models: {
   __unbound__: {
+    Membership: Models.unbound_Membership;
+    Organization: Models.unbound_Organization;
     User: Models.unbound_User;
   };
 };
@@ -78,6 +124,75 @@ type ContractBase = Omit<
         readonly kind: 'mongo-database';
         readonly entries: {
           readonly collection: {
+            readonly memberships: {
+              readonly indexes: readonly [
+                {
+                  readonly keys: readonly [
+                    { readonly direction: 1; readonly field: 'user_id' },
+                    { readonly direction: 1; readonly field: 'organization_id' },
+                  ];
+                  readonly kind: 'mongo-index';
+                  readonly unique: true;
+                },
+                {
+                  readonly keys: readonly [
+                    { readonly direction: 1; readonly field: 'organization_id' },
+                  ];
+                  readonly kind: 'mongo-index';
+                },
+              ];
+              readonly kind: 'mongo-collection';
+              readonly validator: {
+                readonly jsonSchema: {
+                  readonly additionalProperties: false;
+                  readonly bsonType: 'object';
+                  readonly properties: {
+                    readonly _id: { readonly bsonType: 'objectId' };
+                    readonly createdAt: { readonly bsonType: 'date' };
+                    readonly organization_id: { readonly bsonType: 'objectId' };
+                    readonly role: { readonly bsonType: 'string' };
+                    readonly user_id: { readonly bsonType: 'objectId' };
+                  };
+                  readonly required: readonly [
+                    '_id',
+                    'createdAt',
+                    'organization_id',
+                    'role',
+                    'user_id',
+                  ];
+                };
+                readonly kind: 'mongo-validator';
+                readonly validationAction: 'error';
+                readonly validationLevel: 'strict';
+              };
+            };
+            readonly organizations: {
+              readonly indexes: readonly [
+                {
+                  readonly keys: readonly [{ readonly direction: 1; readonly field: 'slug' }];
+                  readonly kind: 'mongo-index';
+                  readonly unique: true;
+                },
+              ];
+              readonly kind: 'mongo-collection';
+              readonly validator: {
+                readonly jsonSchema: {
+                  readonly additionalProperties: false;
+                  readonly bsonType: 'object';
+                  readonly properties: {
+                    readonly _id: { readonly bsonType: 'objectId' };
+                    readonly createdAt: { readonly bsonType: 'date' };
+                    readonly name: { readonly bsonType: 'string' };
+                    readonly slug: { readonly bsonType: 'string' };
+                    readonly status: { readonly bsonType: 'string' };
+                  };
+                  readonly required: readonly ['_id', 'createdAt', 'name', 'slug', 'status'];
+                };
+                readonly kind: 'mongo-validator';
+                readonly validationAction: 'error';
+                readonly validationLevel: 'strict';
+              };
+            };
             readonly users: {
               readonly indexes: readonly [
                 {
@@ -97,7 +212,7 @@ type ContractBase = Omit<
                     readonly email: { readonly bsonType: 'string' };
                     readonly name: { readonly bsonType: 'string' };
                     readonly password: { readonly bsonType: 'string' };
-                    readonly role: { readonly bsonType: readonly ['null', 'string'] };
+                    readonly platform_role: { readonly bsonType: readonly ['null', 'string'] };
                   };
                   readonly required: readonly ['_id', 'createdAt', 'email', 'name', 'password'];
                 };
@@ -117,12 +232,72 @@ type ContractBase = Omit<
   readonly target: 'mongo';
   readonly targetFamily: 'mongo';
   readonly roots: {
+    readonly memberships: {
+      readonly namespace: '__unbound__' & NamespaceId;
+      readonly model: 'Membership';
+    };
+    readonly organizations: {
+      readonly namespace: '__unbound__' & NamespaceId;
+      readonly model: 'Organization';
+    };
     readonly users: { readonly namespace: '__unbound__' & NamespaceId; readonly model: 'User' };
   };
   readonly domain: {
     readonly namespaces: {
       readonly __unbound__: {
         readonly models: {
+          readonly Membership: {
+            readonly fields: {
+              readonly _id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/objectId@1' };
+              };
+              readonly createdAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/date@1' };
+              };
+              readonly organization_id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/objectId@1' };
+              };
+              readonly role: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
+              };
+              readonly user_id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/objectId@1' };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: { readonly collection: 'memberships' };
+          };
+          readonly Organization: {
+            readonly fields: {
+              readonly _id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/objectId@1' };
+              };
+              readonly createdAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/date@1' };
+              };
+              readonly name: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
+              };
+              readonly slug: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
+              };
+              readonly status: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: { readonly collection: 'organizations' };
+          };
           readonly User: {
             readonly fields: {
               readonly _id: {
@@ -145,7 +320,7 @@ type ContractBase = Omit<
                 readonly nullable: false;
                 readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
               };
-              readonly role: {
+              readonly platform_role: {
                 readonly nullable: true;
                 readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
               };

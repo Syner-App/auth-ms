@@ -4,6 +4,14 @@
   "target": "mongo",
   "profileHash": "251b3ce23f6c9f561892e7c1af9d2cc941a13d64ba1aa7226b90036b09568cc3",
   "roots": {
+    "memberships": {
+      "model": "Membership",
+      "namespace": "__unbound__"
+    },
+    "organizations": {
+      "model": "Organization",
+      "namespace": "__unbound__"
+    },
     "users": {
       "model": "User",
       "namespace": "__unbound__"
@@ -13,6 +21,92 @@
     "namespaces": {
       "__unbound__": {
         "models": {
+          "Membership": {
+            "fields": {
+              "_id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/objectId@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/date@1",
+                  "kind": "scalar"
+                }
+              },
+              "organization_id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/objectId@1",
+                  "kind": "scalar"
+                }
+              },
+              "role": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "user_id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/objectId@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "collection": "memberships"
+            }
+          },
+          "Organization": {
+            "fields": {
+              "_id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/objectId@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/date@1",
+                  "kind": "scalar"
+                }
+              },
+              "name": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "slug": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "status": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "collection": "organizations"
+            }
+          },
           "User": {
             "fields": {
               "_id": {
@@ -50,7 +144,7 @@
                   "kind": "scalar"
                 }
               },
-              "role": {
+              "platform_role": {
                 "nullable": true,
                 "type": {
                   "codecId": "mongo/string@1",
@@ -72,6 +166,115 @@
       "__unbound__": {
         "entries": {
           "collection": {
+            "memberships": {
+              "indexes": [
+                {
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "user_id"
+                    },
+                    {
+                      "direction": 1,
+                      "field": "organization_id"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "unique": true
+                },
+                {
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "organization_id"
+                    }
+                  ],
+                  "kind": "mongo-index"
+                }
+              ],
+              "kind": "mongo-collection",
+              "validator": {
+                "jsonSchema": {
+                  "additionalProperties": false,
+                  "bsonType": "object",
+                  "properties": {
+                    "_id": {
+                      "bsonType": "objectId"
+                    },
+                    "createdAt": {
+                      "bsonType": "date"
+                    },
+                    "organization_id": {
+                      "bsonType": "objectId"
+                    },
+                    "role": {
+                      "bsonType": "string"
+                    },
+                    "user_id": {
+                      "bsonType": "objectId"
+                    }
+                  },
+                  "required": [
+                    "_id",
+                    "createdAt",
+                    "organization_id",
+                    "role",
+                    "user_id"
+                  ]
+                },
+                "kind": "mongo-validator",
+                "validationAction": "error",
+                "validationLevel": "strict"
+              }
+            },
+            "organizations": {
+              "indexes": [
+                {
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "slug"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "unique": true
+                }
+              ],
+              "kind": "mongo-collection",
+              "validator": {
+                "jsonSchema": {
+                  "additionalProperties": false,
+                  "bsonType": "object",
+                  "properties": {
+                    "_id": {
+                      "bsonType": "objectId"
+                    },
+                    "createdAt": {
+                      "bsonType": "date"
+                    },
+                    "name": {
+                      "bsonType": "string"
+                    },
+                    "slug": {
+                      "bsonType": "string"
+                    },
+                    "status": {
+                      "bsonType": "string"
+                    }
+                  },
+                  "required": [
+                    "_id",
+                    "createdAt",
+                    "name",
+                    "slug",
+                    "status"
+                  ]
+                },
+                "kind": "mongo-validator",
+                "validationAction": "error",
+                "validationLevel": "strict"
+              }
+            },
             "users": {
               "indexes": [
                 {
@@ -106,7 +309,7 @@
                     "password": {
                       "bsonType": "string"
                     },
-                    "role": {
+                    "platform_role": {
                       "bsonType": [
                         "null",
                         "string"
@@ -132,7 +335,7 @@
         "kind": "mongo-database"
       }
     },
-    "storageHash": "77b2b74fc1976a4e87172d208ca50a199e039d9b14149c56b75c4efb674a0be8"
+    "storageHash": "90ae5f43f1a055959c892402178ffb833762879b601af6a2d1f73776f73e6a5d"
   },
   "capabilities": {},
   "extensions": {},

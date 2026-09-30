@@ -14,5 +14,7 @@ import { envs } from '../config/envs.js';
   ],
   controllers: [AuthController],
   providers: [AuthService, PrismaService],
+  // OrganizationsModule reuses the same MongoDB client
+  exports: [PrismaService],
 })
 export class AuthModule {}

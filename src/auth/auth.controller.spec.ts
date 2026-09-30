@@ -7,8 +7,8 @@ describe('AuthController', () => {
   let controller: AuthController;
 
   const authService = {
-    registerUser: vi.fn(),
     loginUser: vi.fn(),
+    switchOrganization: vi.fn(),
     verify: vi.fn(),
     updateUserRole: vi.fn(),
   };
@@ -24,16 +24,16 @@ describe('AuthController', () => {
     controller = module.get<AuthController>(AuthController);
   });
 
-  it('delegates RegisterUser to the service', async () => {
-    const dto = { name: 'Ana', email: 'ana@syner.com', password: 'Str0ng!Pass', requester_role: Role.owner };
-    await controller.registerUser(dto);
-    expect(authService.registerUser).toHaveBeenCalledWith(dto);
-  });
-
   it('delegates LoginUser to the service', async () => {
     const dto = { email: 'ana@syner.com', password: 'Str0ng!Pass' };
     await controller.loginUser(dto);
     expect(authService.loginUser).toHaveBeenCalledWith(dto);
+  });
+
+  it('delegates SwitchOrganization to the service', async () => {
+    const dto = { requester_id: '6abd26a42d059ac027376c78', organization_id: '6abd26a42d059ac027376ca1' };
+    await controller.switchOrganization(dto);
+    expect(authService.switchOrganization).toHaveBeenCalledWith(dto);
   });
 
   it('delegates Verify to the service with the token', async () => {
@@ -42,7 +42,12 @@ describe('AuthController', () => {
   });
 
   it('delegates UpdateUserRole to the service', async () => {
-    const dto = { user_id: '6abd26a42d059ac027376c78', role: Role.admin, requester_id: '6abd26a42d059ac027376c79' };
+    const dto = {
+      user_id: '6abd26a42d059ac027376c78',
+      role: Role.admin,
+      requester_id: '6abd26a42d059ac027376c79',
+      organization_id: '6abd26a42d059ac027376ca1',
+    };
     await controller.updateUserRole(dto);
     expect(authService.updateUserRole).toHaveBeenCalledWith(dto);
   });

@@ -9,7 +9,10 @@ export class UpdateUserRoleDto {
   @IsIn(ROLES)
   public role: Role;
 
-  // Id of the authenticated caller, set by client-gateway
+  // Id of the authenticated caller and its active organization, set by client-gateway
   @IsMongoId()
   public requester_id: string;
+
+  @IsMongoId()
+  public organization_id: string;
 }

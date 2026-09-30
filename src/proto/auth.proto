@@ -5,37 +5,61 @@ package auth;
 // Field names are snake_case end to end (proto-loader keepCase + ts-proto
 // snakeToCamel=false), like the other Syner services
 service AuthService {
-  // Only owner/admin may register users (client-gateway checks the caller's role
-  // and sends it as requester_role; auth-ms enforces which roles each one may create)
-  rpc RegisterUser (RegisterUserRequest) returns (AuthResponse);
+  // With organization_id the token is scoped to it. Without it, a user with exactly one
+  // membership gets a token for that organization; otherwise the token has no organization
+  // (superadmin, or a user who must pick one with SwitchOrganization)
   rpc LoginUser (LoginUserRequest) returns (AuthResponse);
-  // Validates the token, reloads the user (current role) and returns it with a freshly signed token
+  // Returns a token scoped to another organization the caller belongs to
+  rpc SwitchOrganization (SwitchOrganizationRequest) returns (AuthResponse);
+  // Validates the token, reloads the user, membership and organization (current role and
+  // status) and returns them with a freshly signed token
   rpc Verify (VerifyRequest) returns (AuthResponse);
-  // Owner only: changes another user's role
+  // Owner of the organization only: changes another member's role in it
   rpc UpdateUserRole (UpdateUserRoleRequest) returns (User);
 }
 
-// owner: whole system + role management. admin: full access to products, alerts
-// and purchase orders. user: read-only plus stock movements (entrada / salida)
+// Platform superadmin only (auth-ms checks requester_id against the database)
+service OrganizationsService {
+  rpc Create (CreateOrganizationRequest) returns (Organization);
+  // Every organization, newest first
+  rpc FindAll (FindOrganizationsRequest) returns (OrganizationList);
+  rpc FindOne (OrganizationById) returns (Organization);
+  rpc UpdateStatus (UpdateOrganizationStatusRequest) returns (Organization);
+  // Creates the user when the email is unknown (password required), then the membership
+  rpc AddMember (AddMemberRequest) returns (Member);
+  rpc FindMembers (OrganizationById) returns (MemberList);
+  rpc RemoveMember (RemoveMemberRequest) returns (Member);
+}
+
+// Role inside an organization. owner: whole organization + role management. admin: full
+// access to products, alerts and purchase orders. user: read-only plus stock movements
 enum Role {
   user = 0;
   admin = 1;
   owner = 2;
 }
 
-message RegisterUserRequest {
-  string name = 1;
-  string email = 2;
-  string password = 3;
-  // Role of the new user (defaults to user)
-  optional Role role = 4;
-  // Role of the authenticated caller who registers the user
-  Role requester_role = 5;
+// Role on the whole platform, above organizations
+enum PlatformRole {
+  superadmin = 0;
+}
+
+// A SUSPENDED organization rejects every token scoped to it
+enum OrganizationStatus {
+  ACTIVE = 0;
+  SUSPENDED = 1;
 }
 
 message LoginUserRequest {
   string email = 1;
   string password = 2;
+  optional string organization_id = 3;
+}
+
+message SwitchOrganizationRequest {
+  // Id of the authenticated caller
+  string requester_id = 1;
+  string organization_id = 2;
 }
 
 message VerifyRequest {
@@ -45,19 +69,94 @@ message VerifyRequest {
 message UpdateUserRoleRequest {
   string user_id = 1;
   Role role = 2;
-  // Id of the authenticated caller; auth-ms checks it is an owner
+  // Id of the authenticated caller and its active organization; auth-ms checks it owns it
   string requester_id = 3;
+  string organization_id = 4;
 }
 
-// Never carries the password hash
+// Never carries the password hash. organization_id and role describe the organization the
+// token is scoped to (absent when it has none)
 message User {
   string id = 1;
   string name = 2;
   string email = 3;
+  optional PlatformRole platform_role = 4;
+  optional string organization_id = 5;
+  optional Role role = 6;
+}
+
+// An active organization the user belongs to (LoginUser lists them to pick one)
+message Membership {
+  string organization_id = 1;
+  string organization_name = 2;
+  string organization_slug = 3;
   Role role = 4;
 }
 
 message AuthResponse {
   User user = 1;
   string token = 2;
+  repeated Membership memberships = 3;
+}
+
+message CreateOrganizationRequest {
+  string requester_id = 1;
+  string name = 2;
+  // Lowercase letters, numbers and dashes; unique
+  string slug = 3;
+}
+
+message FindOrganizationsRequest {
+  string requester_id = 1;
+}
+
+message OrganizationById {
+  string requester_id = 1;
+  string id = 2;
+}
+
+message UpdateOrganizationStatusRequest {
+  string requester_id = 1;
+  string id = 2;
+  OrganizationStatus status = 3;
+}
+
+message AddMemberRequest {
+  string requester_id = 1;
+  string organization_id = 2;
+  string email = 3;
+  Role role = 4;
+  // Only used (and then required) when no user has this email yet
+  optional string name = 5;
+  optional string password = 6;
+}
+
+message RemoveMemberRequest {
+  string requester_id = 1;
+  string organization_id = 2;
+  string user_id = 3;
+}
+
+message Organization {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  OrganizationStatus status = 4;
+  string createdAt = 5;
+}
+
+message OrganizationList {
+  repeated Organization data = 1;
+}
+
+message Member {
+  string user_id = 1;
+  string name = 2;
+  string email = 3;
+  string organization_id = 4;
+  Role role = 5;
+}
+
+message MemberList {
+  repeated Member data = 1;
 }

@@ -5,11 +5,13 @@ import { status } from '@grpc/grpc-js';
 import bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { Role } from '../generated/proto/auth.js';
+import { OrganizationStatus, PlatformRole, Role } from '../generated/proto/auth.js';
 import { envs } from '../config/envs.js';
 
 const userId = '6abd26a42d059ac027376c78';
 const ownerId = '6abd26a42d059ac027376c79';
+const orgA = '6abd26a42d059ac027376ca1';
+const orgB = '6abd26a42d059ac027376cb2';
 const password = 'Str0ng!Pass';
 
 const buildUserDocument = async (overrides: Record<string, unknown> = {}) => ({
@@ -17,9 +19,26 @@ const buildUserDocument = async (overrides: Record<string, unknown> = {}) => ({
   name: 'Ana',
   email: 'ana@syner.com',
   password: await bcrypt.hash(password, 4),
-  role: Role.user,
+  platform_role: null,
   createdAt: new Date('2026-09-30T12:00:00.000Z'),
   ...overrides,
+});
+
+const organization = (_id: string, overrides: Record<string, unknown> = {}) => ({
+  _id,
+  name: `Org ${_id.slice(-2)}`,
+  slug: `org-${_id.slice(-2)}`,
+  status: OrganizationStatus.ACTIVE,
+  createdAt: new Date('2026-09-30T12:00:00.000Z'),
+  ...overrides,
+});
+
+const membership = (organization_id: string, role: Role, user_id = userId) => ({
+  _id: `${organization_id.slice(0, 22)}ff`,
+  user_id,
+  organization_id,
+  role,
+  createdAt: new Date('2026-09-30T12:00:00.000Z'),
 });
 
 const expectRpcError = async (promise: Promise<unknown>, code: status) => {
@@ -28,20 +47,31 @@ const expectRpcError = async (promise: Promise<unknown>, code: status) => {
   expect((error as RpcException).getError()).toMatchObject({ code });
 };
 
+// db.orm.<collection>.where(...).first() / .update() / .all(), db.orm.<collection>.create(...)
+const mockCollection = () => {
+  const query = { first: vi.fn(), update: vi.fn(), all: vi.fn() };
+  return { ...query, where: vi.fn((_filter: Record<string, unknown>) => query), create: vi.fn() };
+};
+
 describe('AuthService', () => {
   let service: AuthService;
   let jwtService: JwtService;
 
-  // db.orm.users.where(...).first() / .where(...).update(...) / db.orm.users.create(...)
-  const first = vi.fn();
-  const update = vi.fn();
-  const users = { where: vi.fn(() => ({ first, update })), create: vi.fn() };
-  const prisma = { db: { orm: { users } } };
+  const users = mockCollection();
+  const memberships = mockCollection();
+  const organizations = mockCollection();
+  const prisma = { db: { orm: { users, memberships, organizations } } };
 
-  const newUser = { name: 'Ana', email: 'ana@syner.com', password };
+  // Organizations looked up by id
+  const withOrganizations = (...docs: ReturnType<typeof organization>[]) =>
+    organizations.where.mockImplementation(({ _id }) => ({
+      ...organizations,
+      first: vi.fn().mockResolvedValue(docs.find((doc) => doc._id === _id) ?? null),
+    }));
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    organizations.where.mockImplementation(() => organizations);
     users.create.mockImplementation(async (data: Record<string, unknown>) => ({ _id: userId, ...data }));
 
     const module: TestingModule = await Test.createTestingModule({
@@ -56,95 +86,109 @@ describe('AuthService', () => {
     jwtService = module.get(JwtService);
   });
 
-  describe('seedOwner', () => {
-    it('creates the owner from the env when it does not exist', async () => {
-      first.mockResolvedValue(null);
+  describe('seedSuperadmin', () => {
+    it('creates the superadmin from the env when it does not exist', async () => {
+      users.first.mockResolvedValue(null);
 
-      await service.seedOwner();
+      await service.seedSuperadmin();
 
-      expect(users.where).toHaveBeenCalledWith({ email: envs.owner.email });
+      expect(users.where).toHaveBeenCalledWith({ email: envs.superadmin.email });
       const stored = users.create.mock.calls[0][0];
-      expect(stored).toMatchObject({ name: envs.owner.name, email: envs.owner.email, role: Role.owner });
-      expect(await bcrypt.compare(envs.owner.password, stored.password)).toBe(true);
+      expect(stored).toMatchObject({
+        name: envs.superadmin.name,
+        email: envs.superadmin.email,
+        platform_role: PlatformRole.superadmin,
+      });
+      expect(await bcrypt.compare(envs.superadmin.password, stored.password)).toBe(true);
     });
 
-    it('leaves an existing user with the owner email untouched', async () => {
-      first.mockResolvedValue(await buildUserDocument({ email: envs.owner.email }));
+    it('leaves an existing user with the superadmin email untouched', async () => {
+      users.first.mockResolvedValue(await buildUserDocument({ email: envs.superadmin.email }));
 
-      await service.seedOwner();
+      await service.seedSuperadmin();
 
       expect(users.create).not.toHaveBeenCalled();
-      expect(update).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('registerUser', () => {
-    it('stores a bcrypt hash and the user role, and returns the user without the password plus a token', async () => {
-      first.mockResolvedValue(null);
-
-      const result = await service.registerUser({ ...newUser, requester_role: Role.admin });
-
-      const stored = users.create.mock.calls[0][0];
-      expect(stored.password).not.toBe(password);
-      expect(await bcrypt.compare(password, stored.password)).toBe(true);
-      expect(stored.createdAt).toBeInstanceOf(Date);
-      expect(stored.role).toBe(Role.user);
-      expect(result.user).toEqual({ id: userId, name: 'Ana', email: 'ana@syner.com', role: Role.user });
-      expect(jwtService.verify(result.token)).toMatchObject(result.user!);
-    });
-
-    it.each([Role.owner, Role.admin, Role.user])('lets an owner register a %s', async (role) => {
-      first.mockResolvedValue(null);
-
-      const result = await service.registerUser({ ...newUser, role, requester_role: Role.owner });
-
-      expect(result.user?.role).toBe(role);
-    });
-
-    it.each([
-      [Role.admin, Role.admin],
-      [Role.admin, Role.owner],
-      [Role.user, Role.user],
-    ])('rejects a %s registering a %s with PERMISSION_DENIED', async (requester_role, role) => {
-      await expectRpcError(
-        service.registerUser({ ...newUser, role, requester_role }),
-        status.PERMISSION_DENIED,
-      );
-      expect(users.create).not.toHaveBeenCalled();
-    });
-
-    it('rejects an email that is already registered with ALREADY_EXISTS', async () => {
-      first.mockResolvedValue(await buildUserDocument());
-
-      await expectRpcError(
-        service.registerUser({ ...newUser, requester_role: Role.owner }),
-        status.ALREADY_EXISTS,
-      );
-      expect(users.create).not.toHaveBeenCalled();
+      expect(users.update).not.toHaveBeenCalled();
     });
   });
 
   describe('loginUser', () => {
-    it('returns the user with its role and a token for valid credentials', async () => {
-      first.mockResolvedValue(await buildUserDocument({ role: Role.admin }));
+    it('scopes the token to the only active organization of the user', async () => {
+      users.first.mockResolvedValue(await buildUserDocument());
+      memberships.all.mockResolvedValue([membership(orgA, Role.admin)]);
+      withOrganizations(organization(orgA));
 
       const result = await service.loginUser({ email: 'ana@syner.com', password });
 
-      expect(users.where).toHaveBeenCalledWith({ email: 'ana@syner.com' });
-      expect(result.user).toEqual({ id: userId, name: 'Ana', email: 'ana@syner.com', role: Role.admin });
-      expect(result.token).toEqual(expect.any(String));
+      expect(result.user).toEqual({ id: userId, name: 'Ana', email: 'ana@syner.com', organization_id: orgA, role: Role.admin });
+      expect(result.memberships).toEqual([
+        { organization_id: orgA, organization_name: 'Org a1', organization_slug: 'org-a1', role: Role.admin },
+      ]);
+      expect(jwtService.verify(result.token)).toMatchObject({ id: userId, organization_id: orgA });
     });
 
-    it('treats a user stored without a role as user', async () => {
-      first.mockResolvedValue(await buildUserDocument({ role: undefined }));
+    it('returns a token without organization and the memberships when the user has several', async () => {
+      users.first.mockResolvedValue(await buildUserDocument());
+      memberships.all.mockResolvedValue([membership(orgA, Role.user), membership(orgB, Role.owner)]);
+      withOrganizations(organization(orgA), organization(orgB));
 
       const result = await service.loginUser({ email: 'ana@syner.com', password });
 
-      expect(result.user?.role).toBe(Role.user);
+      expect(result.user).toEqual({ id: userId, name: 'Ana', email: 'ana@syner.com' });
+      expect(result.memberships.map(({ organization_id }) => organization_id)).toEqual([orgA, orgB]);
+      expect(jwtService.verify(result.token).organization_id).toBeUndefined();
+    });
+
+    it('scopes the token to the requested organization', async () => {
+      users.first.mockResolvedValue(await buildUserDocument());
+      memberships.all.mockResolvedValue([membership(orgA, Role.user), membership(orgB, Role.owner)]);
+      withOrganizations(organization(orgA), organization(orgB));
+
+      const result = await service.loginUser({ email: 'ana@syner.com', password, organization_id: orgB });
+
+      expect(result.user).toMatchObject({ organization_id: orgB, role: Role.owner });
+    });
+
+    it('ignores memberships of suspended organizations', async () => {
+      users.first.mockResolvedValue(await buildUserDocument());
+      memberships.all.mockResolvedValue([membership(orgA, Role.user), membership(orgB, Role.owner)]);
+      withOrganizations(organization(orgA, { status: OrganizationStatus.SUSPENDED }), organization(orgB));
+
+      const result = await service.loginUser({ email: 'ana@syner.com', password });
+
+      expect(result.user).toMatchObject({ organization_id: orgB, role: Role.owner });
+      expect(result.memberships).toHaveLength(1);
+    });
+
+    it('rejects a requested organization the user does not belong to with PERMISSION_DENIED', async () => {
+      users.first.mockResolvedValue(await buildUserDocument());
+      memberships.all.mockResolvedValue([membership(orgA, Role.user)]);
+      withOrganizations(organization(orgA));
+
+      await expectRpcError(
+        service.loginUser({ email: 'ana@syner.com', password, organization_id: orgB }),
+        status.PERMISSION_DENIED,
+      );
+    });
+
+    it('rejects a user without active organizations with PERMISSION_DENIED', async () => {
+      users.first.mockResolvedValue(await buildUserDocument());
+      memberships.all.mockResolvedValue([]);
+
+      await expectRpcError(service.loginUser({ email: 'ana@syner.com', password }), status.PERMISSION_DENIED);
+    });
+
+    it('lets the superadmin in without an organization', async () => {
+      users.first.mockResolvedValue(await buildUserDocument({ platform_role: PlatformRole.superadmin }));
+      memberships.all.mockResolvedValue([]);
+
+      const result = await service.loginUser({ email: 'ana@syner.com', password });
+
+      expect(result.user).toEqual({ id: userId, name: 'Ana', email: 'ana@syner.com', platform_role: PlatformRole.superadmin });
     });
 
     it('rejects a wrong password with UNAUTHENTICATED', async () => {
-      first.mockResolvedValue(await buildUserDocument());
+      users.first.mockResolvedValue(await buildUserDocument());
 
       await expectRpcError(
         service.loginUser({ email: 'ana@syner.com', password: 'wrong' }),
@@ -153,7 +197,7 @@ describe('AuthService', () => {
     });
 
     it('rejects an unknown email with UNAUTHENTICATED', async () => {
-      first.mockResolvedValue(null);
+      users.first.mockResolvedValue(null);
 
       await expectRpcError(
         service.loginUser({ email: 'nobody@syner.com', password }),
@@ -162,21 +206,74 @@ describe('AuthService', () => {
     });
   });
 
+  describe('switchOrganization', () => {
+    it('returns a token scoped to another organization of the caller', async () => {
+      users.first.mockResolvedValue(await buildUserDocument());
+      memberships.first.mockResolvedValue(membership(orgB, Role.admin));
+      withOrganizations(organization(orgB));
+
+      const result = await service.switchOrganization({ requester_id: userId, organization_id: orgB });
+
+      expect(memberships.where).toHaveBeenCalledWith({ user_id: userId, organization_id: orgB });
+      expect(result.user).toMatchObject({ organization_id: orgB, role: Role.admin });
+      expect(jwtService.verify(result.token)).toMatchObject({ id: userId, organization_id: orgB });
+    });
+
+    it('rejects an organization the caller does not belong to with PERMISSION_DENIED', async () => {
+      users.first.mockResolvedValue(await buildUserDocument());
+      memberships.first.mockResolvedValue(null);
+
+      await expectRpcError(
+        service.switchOrganization({ requester_id: userId, organization_id: orgB }),
+        status.PERMISSION_DENIED,
+      );
+    });
+  });
+
   describe('verify', () => {
-    it('reloads the user so the renewed token carries its current role', async () => {
-      const token = jwtService.sign({ id: userId, name: 'Ana', email: 'ana@syner.com', role: Role.user });
-      first.mockResolvedValue(await buildUserDocument({ role: Role.admin }));
+    it('reloads the membership so the renewed token carries the current role', async () => {
+      const token = jwtService.sign({ id: userId, organization_id: orgA });
+      users.first.mockResolvedValue(await buildUserDocument());
+      memberships.first.mockResolvedValue(membership(orgA, Role.admin));
+      withOrganizations(organization(orgA));
 
       const result = await service.verify(token);
 
       expect(users.where).toHaveBeenCalledWith({ _id: userId });
-      expect(result.user).toEqual({ id: userId, name: 'Ana', email: 'ana@syner.com', role: Role.admin });
-      expect(jwtService.verify(result.token)).toMatchObject(result.user!);
+      expect(result.user).toEqual({ id: userId, name: 'Ana', email: 'ana@syner.com', organization_id: orgA, role: Role.admin });
+      expect(jwtService.verify(result.token)).toMatchObject({ id: userId, organization_id: orgA });
+    });
+
+    it('verifies a token without organization without loading memberships', async () => {
+      const token = jwtService.sign({ id: userId });
+      users.first.mockResolvedValue(await buildUserDocument({ platform_role: PlatformRole.superadmin }));
+
+      const result = await service.verify(token);
+
+      expect(result.user).toEqual({ id: userId, name: 'Ana', email: 'ana@syner.com', platform_role: PlatformRole.superadmin });
+      expect(memberships.where).not.toHaveBeenCalled();
+    });
+
+    it('rejects a token whose membership was removed with UNAUTHENTICATED', async () => {
+      const token = jwtService.sign({ id: userId, organization_id: orgA });
+      users.first.mockResolvedValue(await buildUserDocument());
+      memberships.first.mockResolvedValue(null);
+
+      await expectRpcError(service.verify(token), status.UNAUTHENTICATED);
+    });
+
+    it('rejects a token of a suspended organization with PERMISSION_DENIED', async () => {
+      const token = jwtService.sign({ id: userId, organization_id: orgA });
+      users.first.mockResolvedValue(await buildUserDocument());
+      memberships.first.mockResolvedValue(membership(orgA, Role.owner));
+      withOrganizations(organization(orgA, { status: OrganizationStatus.SUSPENDED }));
+
+      await expectRpcError(service.verify(token), status.PERMISSION_DENIED);
     });
 
     it('rejects a token whose user no longer exists with UNAUTHENTICATED', async () => {
       const token = jwtService.sign({ id: userId });
-      first.mockResolvedValue(null);
+      users.first.mockResolvedValue(null);
 
       await expectRpcError(service.verify(token), status.UNAUTHENTICATED);
     });
@@ -185,51 +282,56 @@ describe('AuthService', () => {
       const token = new JwtService({ secret: 'other-secret' }).sign({ id: userId });
 
       await expectRpcError(service.verify(token), status.UNAUTHENTICATED);
-      expect(first).not.toHaveBeenCalled();
+      expect(users.first).not.toHaveBeenCalled();
     });
   });
 
   describe('updateUserRole', () => {
-    const owner = () => buildUserDocument({ _id: ownerId, email: 'owner@syner.com', role: Role.owner });
+    const request = { user_id: userId, role: Role.admin, requester_id: ownerId, organization_id: orgA };
 
-    it('lets an owner change another user role', async () => {
-      first.mockResolvedValueOnce(await owner()).mockResolvedValueOnce(await buildUserDocument());
+    it('lets an owner change the role of another member of the organization', async () => {
+      memberships.first
+        .mockResolvedValueOnce(membership(orgA, Role.owner, ownerId))
+        .mockResolvedValueOnce(membership(orgA, Role.user));
+      users.first.mockResolvedValue(await buildUserDocument());
 
-      const result = await service.updateUserRole({ user_id: userId, role: Role.admin, requester_id: ownerId });
+      const result = await service.updateUserRole(request);
 
-      expect(users.where).toHaveBeenLastCalledWith({ _id: userId });
-      expect(update).toHaveBeenCalledWith({ role: Role.admin });
-      expect(result).toEqual({ id: userId, name: 'Ana', email: 'ana@syner.com', role: Role.admin });
+      expect(memberships.where).toHaveBeenNthCalledWith(1, { user_id: ownerId, organization_id: orgA });
+      expect(memberships.where).toHaveBeenNthCalledWith(2, { user_id: userId, organization_id: orgA });
+      expect(memberships.update).toHaveBeenCalledWith({ role: Role.admin });
+      expect(result).toEqual({ id: userId, name: 'Ana', email: 'ana@syner.com', organization_id: orgA, role: Role.admin });
     });
 
-    it('rejects a requester that is not an owner with PERMISSION_DENIED', async () => {
-      first.mockResolvedValueOnce(await buildUserDocument({ _id: ownerId, role: Role.admin }));
+    it('rejects a requester that is not an owner of the organization with PERMISSION_DENIED', async () => {
+      memberships.first.mockResolvedValueOnce(membership(orgA, Role.admin, ownerId));
 
-      await expectRpcError(
-        service.updateUserRole({ user_id: userId, role: Role.admin, requester_id: ownerId }),
-        status.PERMISSION_DENIED,
-      );
-      expect(update).not.toHaveBeenCalled();
+      await expectRpcError(service.updateUserRole(request), status.PERMISSION_DENIED);
+      expect(memberships.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a requester that does not belong to the organization with PERMISSION_DENIED', async () => {
+      memberships.first.mockResolvedValueOnce(null);
+
+      await expectRpcError(service.updateUserRole(request), status.PERMISSION_DENIED);
+      expect(memberships.update).not.toHaveBeenCalled();
     });
 
     it('rejects an owner changing their own role with PERMISSION_DENIED', async () => {
-      first.mockResolvedValueOnce(await owner());
+      memberships.first.mockResolvedValueOnce(membership(orgA, Role.owner, ownerId));
 
       await expectRpcError(
-        service.updateUserRole({ user_id: ownerId, role: Role.user, requester_id: ownerId }),
+        service.updateUserRole({ ...request, user_id: ownerId, role: Role.user }),
         status.PERMISSION_DENIED,
       );
-      expect(update).not.toHaveBeenCalled();
+      expect(memberships.update).not.toHaveBeenCalled();
     });
 
-    it('rejects an unknown user with NOT_FOUND', async () => {
-      first.mockResolvedValueOnce(await owner()).mockResolvedValueOnce(null);
+    it('rejects a user that is not a member of the organization with NOT_FOUND', async () => {
+      memberships.first.mockResolvedValueOnce(membership(orgA, Role.owner, ownerId)).mockResolvedValueOnce(null);
 
-      await expectRpcError(
-        service.updateUserRole({ user_id: userId, role: Role.admin, requester_id: ownerId }),
-        status.NOT_FOUND,
-      );
-      expect(update).not.toHaveBeenCalled();
+      await expectRpcError(service.updateUserRole(request), status.NOT_FOUND);
+      expect(memberships.update).not.toHaveBeenCalled();
     });
   });
 });

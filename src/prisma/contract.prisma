@@ -1,13 +1,38 @@
 // use prisma-8
 
-// Prisma 8 MongoDB connector: no @default support yet, so AuthService sets createdAt and role.
-// After editing, run `pnpm prisma contract emit` (regenerates contract.json / contract.d.ts)
+// Prisma 8 MongoDB connector: no @default support yet, so the services set createdAt,
+// status and role. After editing, run `pnpm prisma contract emit` (regenerates contract.json / contract.d.ts)
+
+// A person who can sign in. Organization roles live in Membership; platform_role is
+// only set for the platform superadmin (manages organizations and their members)
 model User {
+  id            ObjectId @id @map("_id")
+  name          String
+  email         String   @unique
+  password      String // bcrypt hash
+  platform_role String? // superadmin | null
+  createdAt     Date
+  @@map("users")
+}
+
+// A tenant. products-ms and orders-ms scope every row by its id (organization_id)
+model Organization {
   id        ObjectId @id @map("_id")
   name      String
-  email     String   @unique
-  password  String // bcrypt hash
-  role      String? // Role from auth.proto: owner | admin | user. Missing on users created before roles (read as user)
+  slug      String   @unique
+  status    String // ACTIVE | SUSPENDED (OrganizationStatus in auth.proto)
   createdAt Date
-  @@map("users")
+  @@map("organizations")
+}
+
+// A user's role inside one organization. A user may belong to several organizations
+model Membership {
+  id              ObjectId @id @map("_id")
+  user_id         ObjectId
+  organization_id ObjectId
+  role            String // Role from auth.proto: owner | admin | user
+  createdAt       Date
+  @@unique([user_id, organization_id])
+  @@index([organization_id])
+  @@map("memberships")
 }

@@ -1,0 +1,7 @@
+allowBuilds:
+  prisma: true
+  protobufjs: true
+  grpc-tools: true
+  esbuild: true
+  # pulled in by the Prisma 8 CLI (Cloudflare runtime), not needed here
+  workerd: false

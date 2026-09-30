@@ -1,0 +1,14 @@
+node_modules
+dist
+coverage
+.env
+*.tsbuildinfo
+*.log
+*.db
+data
+mongo
+.git
+.claude
+.codegraph
+.DS_Store
+migrations

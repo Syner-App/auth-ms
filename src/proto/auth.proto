@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package auth;
+
+// Field names are snake_case end to end (proto-loader keepCase + ts-proto
+// snakeToCamel=false), like the other Syner services
+service AuthService {
+  rpc RegisterUser (RegisterUserRequest) returns (AuthResponse);
+  rpc LoginUser (LoginUserRequest) returns (AuthResponse);
+  // Validates the token and returns its user with a freshly signed token
+  rpc Verify (VerifyRequest) returns (AuthResponse);
+}
+
+message RegisterUserRequest {
+  string name = 1;
+  string email = 2;
+  string password = 3;
+}
+
+message LoginUserRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message VerifyRequest {
+  string token = 1;
+}
+
+// Never carries the password hash
+message User {
+  string id = 1;
+  string name = 2;
+  string email = 3;
+}
+
+message AuthResponse {
+  User user = 1;
+  string token = 2;
+}

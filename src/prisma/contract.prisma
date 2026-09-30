@@ -1,0 +1,12 @@
+// use prisma-8
+
+// Prisma 8 MongoDB connector: no @default support yet, so AuthService sets createdAt.
+// After editing, run `pnpm prisma contract emit` (regenerates contract.json / contract.d.ts)
+model User {
+  id        ObjectId @id @map("_id")
+  name      String
+  email     String   @unique
+  password  String // bcrypt hash
+  createdAt Date
+  @@map("users")
+}

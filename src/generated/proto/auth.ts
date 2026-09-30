@@ -10,10 +10,27 @@ import { Observable } from "rxjs";
 
 export const protobufPackage = "auth";
 
+/**
+ * owner: whole system + role management. admin: full access to products, alerts
+ * and purchase orders. user: read-only plus stock movements (entrada / salida)
+ */
+export enum Role {
+  user = "user",
+  admin = "admin",
+  owner = "owner",
+  UNRECOGNIZED = "UNRECOGNIZED",
+}
+
 export interface RegisterUserRequest {
   name: string;
   email: string;
   password: string;
+  /** Role of the new user (defaults to user) */
+  role?:
+    | Role
+    | undefined;
+  /** Role of the authenticated caller who registers the user */
+  requester_role: Role;
 }
 
 export interface LoginUserRequest {
@@ -25,11 +42,19 @@ export interface VerifyRequest {
   token: string;
 }
 
+export interface UpdateUserRoleRequest {
+  user_id: string;
+  role: Role;
+  /** Id of the authenticated caller; auth-ms checks it is an owner */
+  requester_id: string;
+}
+
 /** Never carries the password hash */
 export interface User {
   id: string;
   name: string;
   email: string;
+  role: Role;
 }
 
 export interface AuthResponse {
@@ -45,13 +70,22 @@ export const AUTH_PACKAGE_NAME = "auth";
  */
 
 export interface AuthServiceClient {
+  /**
+   * Only owner/admin may register users (client-gateway checks the caller's role
+   * and sends it as requester_role; auth-ms enforces which roles each one may create)
+   */
+
   registerUser(request: RegisterUserRequest): Observable<AuthResponse>;
 
   loginUser(request: LoginUserRequest): Observable<AuthResponse>;
 
-  /** Validates the token and returns its user with a freshly signed token */
+  /** Validates the token, reloads the user (current role) and returns it with a freshly signed token */
 
   verify(request: VerifyRequest): Observable<AuthResponse>;
+
+  /** Owner only: changes another user's role */
+
+  updateUserRole(request: UpdateUserRoleRequest): Observable<User>;
 }
 
 /**
@@ -60,18 +94,27 @@ export interface AuthServiceClient {
  */
 
 export interface AuthServiceController {
+  /**
+   * Only owner/admin may register users (client-gateway checks the caller's role
+   * and sends it as requester_role; auth-ms enforces which roles each one may create)
+   */
+
   registerUser(request: RegisterUserRequest): Promise<AuthResponse> | Observable<AuthResponse> | AuthResponse;
 
   loginUser(request: LoginUserRequest): Promise<AuthResponse> | Observable<AuthResponse> | AuthResponse;
 
-  /** Validates the token and returns its user with a freshly signed token */
+  /** Validates the token, reloads the user (current role) and returns it with a freshly signed token */
 
   verify(request: VerifyRequest): Promise<AuthResponse> | Observable<AuthResponse> | AuthResponse;
+
+  /** Owner only: changes another user's role */
+
+  updateUserRole(request: UpdateUserRoleRequest): Promise<User> | Observable<User> | User;
 }
 
 export function AuthServiceControllerMethods() {
   return function (constructor: Function) {
-    const grpcMethods: string[] = ["registerUser", "loginUser", "verify"];
+    const grpcMethods: string[] = ["registerUser", "loginUser", "verify", "updateUserRole"];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
       GrpcMethod("AuthService", method)(constructor.prototype[method], method, descriptor);

@@ -5,16 +5,32 @@ package auth;
 // Field names are snake_case end to end (proto-loader keepCase + ts-proto
 // snakeToCamel=false), like the other Syner services
 service AuthService {
+  // Only owner/admin may register users (client-gateway checks the caller's role
+  // and sends it as requester_role; auth-ms enforces which roles each one may create)
   rpc RegisterUser (RegisterUserRequest) returns (AuthResponse);
   rpc LoginUser (LoginUserRequest) returns (AuthResponse);
-  // Validates the token and returns its user with a freshly signed token
+  // Validates the token, reloads the user (current role) and returns it with a freshly signed token
   rpc Verify (VerifyRequest) returns (AuthResponse);
+  // Owner only: changes another user's role
+  rpc UpdateUserRole (UpdateUserRoleRequest) returns (User);
+}
+
+// owner: whole system + role management. admin: full access to products, alerts
+// and purchase orders. user: read-only plus stock movements (entrada / salida)
+enum Role {
+  user = 0;
+  admin = 1;
+  owner = 2;
 }
 
 message RegisterUserRequest {
   string name = 1;
   string email = 2;
   string password = 3;
+  // Role of the new user (defaults to user)
+  optional Role role = 4;
+  // Role of the authenticated caller who registers the user
+  Role requester_role = 5;
 }
 
 message LoginUserRequest {
@@ -26,11 +42,19 @@ message VerifyRequest {
   string token = 1;
 }
 
+message UpdateUserRoleRequest {
+  string user_id = 1;
+  Role role = 2;
+  // Id of the authenticated caller; auth-ms checks it is an owner
+  string requester_id = 3;
+}
+
 // Never carries the password hash
 message User {
   string id = 1;
   string name = 2;
   string email = 3;
+  Role role = 4;
 }
 
 message AuthResponse {

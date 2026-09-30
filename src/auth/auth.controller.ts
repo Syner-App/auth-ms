@@ -1,7 +1,7 @@
 import { Controller } from '@nestjs/common';
 import { GrpcMethod, Payload } from '@nestjs/microservices';
 import { AuthService } from './auth.service.js';
-import { LoginUserDto, RegisterUserDto, VerifyTokenDto } from './dto/index.js';
+import { LoginUserDto, RegisterUserDto, UpdateUserRoleDto, VerifyTokenDto } from './dto/index.js';
 import { AUTH_SERVICE_NAME } from '../generated/proto/auth.js';
 
 @Controller()
@@ -21,5 +21,10 @@ export class AuthController {
   @GrpcMethod(AUTH_SERVICE_NAME, 'Verify')
   verify(@Payload() { token }: VerifyTokenDto) {
     return this.authService.verify(token);
+  }
+
+  @GrpcMethod(AUTH_SERVICE_NAME, 'UpdateUserRole')
+  updateUserRole(@Payload() updateUserRoleDto: UpdateUserRoleDto) {
+    return this.authService.updateUserRole(updateUserRoleDto);
   }
 }

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
+import { Role } from '../generated/proto/auth.js';
 
 describe('AuthController', () => {
   let controller: AuthController;
@@ -9,6 +10,7 @@ describe('AuthController', () => {
     registerUser: vi.fn(),
     loginUser: vi.fn(),
     verify: vi.fn(),
+    updateUserRole: vi.fn(),
   };
 
   beforeEach(async () => {
@@ -23,7 +25,7 @@ describe('AuthController', () => {
   });
 
   it('delegates RegisterUser to the service', async () => {
-    const dto = { name: 'Ana', email: 'ana@syner.com', password: 'Str0ng!Pass' };
+    const dto = { name: 'Ana', email: 'ana@syner.com', password: 'Str0ng!Pass', requester_role: Role.owner };
     await controller.registerUser(dto);
     expect(authService.registerUser).toHaveBeenCalledWith(dto);
   });
@@ -37,5 +39,11 @@ describe('AuthController', () => {
   it('delegates Verify to the service with the token', async () => {
     await controller.verify({ token: 'a.b.c' });
     expect(authService.verify).toHaveBeenCalledWith('a.b.c');
+  });
+
+  it('delegates UpdateUserRole to the service', async () => {
+    const dto = { user_id: '6abd26a42d059ac027376c78', role: Role.admin, requester_id: '6abd26a42d059ac027376c79' };
+    await controller.updateUserRole(dto);
+    expect(authService.updateUserRole).toHaveBeenCalledWith(dto);
   });
 });

@@ -49,6 +49,13 @@
                   "codecId": "mongo/string@1",
                   "kind": "scalar"
                 }
+              },
+              "role": {
+                "nullable": true,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
               }
             },
             "relations": {},
@@ -98,6 +105,12 @@
                     },
                     "password": {
                       "bsonType": "string"
+                    },
+                    "role": {
+                      "bsonType": [
+                        "null",
+                        "string"
+                      ]
                     }
                   },
                   "required": [
@@ -119,7 +132,7 @@
         "kind": "mongo-database"
       }
     },
-    "storageHash": "6bccc96428328534cfa9f5c709e04212278f0022c81070aac166ed08a876e8c6"
+    "storageHash": "77b2b74fc1976a4e87172d208ca50a199e039d9b14149c56b75c4efb674a0be8"
   },
   "capabilities": {},
   "extensions": {},

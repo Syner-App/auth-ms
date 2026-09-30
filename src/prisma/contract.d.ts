@@ -18,7 +18,7 @@ import type {
 } from '@prisma/orm-mongo/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'6bccc96428328534cfa9f5c709e04212278f0022c81070aac166ed08a876e8c6'>;
+  StorageHashBase<'77b2b74fc1976a4e87172d208ca50a199e039d9b14149c56b75c4efb674a0be8'>;
 export type ExecutionHash = ExecutionHashBase<string>;
 export type ProfileHash =
   ProfileHashBase<'251b3ce23f6c9f561892e7c1af9d2cc941a13d64ba1aa7226b90036b09568cc3'>;
@@ -33,6 +33,7 @@ export type FieldOutputTypes = {
       readonly email: CodecTypes['mongo/string@1']['output'];
       readonly name: CodecTypes['mongo/string@1']['output'];
       readonly password: CodecTypes['mongo/string@1']['output'];
+      readonly role: CodecTypes['mongo/string@1']['output'] | null;
     };
   };
 };
@@ -44,6 +45,7 @@ export type FieldInputTypes = {
       readonly email: CodecTypes['mongo/string@1']['input'];
       readonly name: CodecTypes['mongo/string@1']['input'];
       readonly password: CodecTypes['mongo/string@1']['input'];
+      readonly role: CodecTypes['mongo/string@1']['input'] | null;
     };
   };
 };
@@ -55,6 +57,7 @@ export namespace Models {
     email: CodecTypes['mongo/string@1']['output'];
     name: CodecTypes['mongo/string@1']['output'];
     password: CodecTypes['mongo/string@1']['output'];
+    role: CodecTypes['mongo/string@1']['output'] | null;
     readonly [RelationKeys]?: never;
   };
 }
@@ -94,6 +97,7 @@ type ContractBase = Omit<
                     readonly email: { readonly bsonType: 'string' };
                     readonly name: { readonly bsonType: 'string' };
                     readonly password: { readonly bsonType: 'string' };
+                    readonly role: { readonly bsonType: readonly ['null', 'string'] };
                   };
                   readonly required: readonly ['_id', 'createdAt', 'email', 'name', 'password'];
                 };
@@ -139,6 +143,10 @@ type ContractBase = Omit<
               };
               readonly password: {
                 readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
+              };
+              readonly role: {
+                readonly nullable: true;
                 readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
               };
             };

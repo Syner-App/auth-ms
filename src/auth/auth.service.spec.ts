@@ -254,6 +254,18 @@ describe('AuthService', () => {
       expect(memberships.where).not.toHaveBeenCalled();
     });
 
+    it('lists the active memberships when include_memberships is set', async () => {
+      const token = jwtService.sign({ id: userId, organization_id: orgA });
+      users.first.mockResolvedValue(await buildUserDocument());
+      memberships.first.mockResolvedValue(membership(orgA, Role.admin));
+      memberships.all.mockResolvedValue([membership(orgA, Role.admin), membership(orgB, Role.user)]);
+      withOrganizations(organization(orgA), organization(orgB, { status: OrganizationStatus.SUSPENDED }));
+
+      const result = await service.verify(token, true);
+
+      expect(result.memberships).toEqual([expect.objectContaining({ organization_id: orgA, role: Role.admin })]);
+    });
+
     it('rejects a token whose membership was removed with UNAUTHENTICATED', async () => {
       const token = jwtService.sign({ id: userId, organization_id: orgA });
       users.first.mockResolvedValue(await buildUserDocument());

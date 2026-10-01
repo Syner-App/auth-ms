@@ -100,7 +100,7 @@ export class AuthService implements OnApplicationBootstrap {
     return this.toAuthResponse(user, active);
   }
 
-  async verify(token: string): Promise<AuthResponse> {
+  async verify(token: string, include_memberships = false): Promise<AuthResponse> {
     let payload: JwtPayload;
     try {
       payload = await this.jwtService.verifyAsync<JwtPayload>(token);
@@ -120,7 +120,11 @@ export class AuthService implements OnApplicationBootstrap {
       ? await this.activeMembership(user._id, payload.organization_id, status.UNAUTHENTICATED)
       : undefined;
 
-    return this.toAuthResponse(user, active);
+    // Only on request: client-gateway verifies every call and doesn't need them
+    const memberships = include_memberships
+      ? (await this.activeMemberships(user._id)).map((membership) => this.toMembershipResponse(membership))
+      : [];
+    return this.toAuthResponse(user, active, memberships);
   }
 
   async updateUserRole({ user_id, role, requester_id, organization_id }: UpdateUserRoleDto): Promise<User> {

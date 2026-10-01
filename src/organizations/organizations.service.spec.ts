@@ -226,4 +226,95 @@ describe('OrganizationsService', () => {
       expect(memberships.delete).not.toHaveBeenCalled();
     });
   });
+
+  describe('current organization', () => {
+    const ownerId = '6abd26a42d059ac027376c11';
+    const ownerMembership = { ...membership, _id: '6abd26a42d059ac027376c12', user_id: ownerId, role: Role.owner };
+    const adminMembership = { ...membership, user_id: ownerId, role: Role.admin };
+    const userMembership = { ...membership, role: Role.user };
+    const current = { requester_id: ownerId, organization_id: orgId };
+
+    it('rejects a requester with role user with PERMISSION_DENIED', async () => {
+      memberships.first.mockResolvedValueOnce({ ...userMembership, user_id: ownerId });
+
+      await expectRpcError(service.findCurrentMembers(current), status.PERMISSION_DENIED);
+    });
+
+    it('rejects a requester that is not a member with PERMISSION_DENIED', async () => {
+      memberships.first.mockResolvedValueOnce(null);
+
+      await expectRpcError(service.findCurrent(current), status.PERMISSION_DENIED);
+    });
+
+    it('lets an admin read the organization', async () => {
+      memberships.first.mockResolvedValueOnce(adminMembership);
+      organizations.first.mockResolvedValue(organization);
+
+      const result = await service.findCurrent(current);
+
+      expect(memberships.where).toHaveBeenCalledWith({ user_id: ownerId, organization_id: orgId });
+      expect(result).toMatchObject({ id: orgId, name: 'Acme', slug: 'acme' });
+    });
+
+    it('lets the owner rename the organization', async () => {
+      memberships.first.mockResolvedValueOnce(ownerMembership);
+      organizations.first.mockResolvedValue(organization);
+
+      const result = await service.updateCurrent({ ...current, name: 'Acme Foods' });
+
+      expect(organizations.update).toHaveBeenCalledWith({ name: 'Acme Foods' });
+      expect(result).toMatchObject({ name: 'Acme Foods', slug: 'acme' });
+    });
+
+    it('rejects an admin renaming the organization with PERMISSION_DENIED', async () => {
+      memberships.first.mockResolvedValueOnce(adminMembership);
+
+      await expectRpcError(service.updateCurrent({ ...current, name: 'Other' }), status.PERMISSION_DENIED);
+      expect(organizations.update).not.toHaveBeenCalled();
+    });
+
+    it('lets an admin add a member with role user', async () => {
+      memberships.first.mockResolvedValueOnce(adminMembership).mockResolvedValueOnce(null);
+      organizations.first.mockResolvedValue(organization);
+      users.first.mockResolvedValueOnce(ana);
+
+      const result = await service.addCurrentMember({ ...current, email: 'ana@syner.com', role: Role.user });
+
+      expect(result).toMatchObject({ user_id: userId, role: Role.user });
+    });
+
+    it('rejects an admin adding an admin with PERMISSION_DENIED', async () => {
+      memberships.first.mockResolvedValueOnce(adminMembership);
+
+      await expectRpcError(
+        service.addCurrentMember({ ...current, email: 'ana@syner.com', role: Role.admin }),
+        status.PERMISSION_DENIED,
+      );
+      expect(memberships.create).not.toHaveBeenCalled();
+    });
+
+    it('lets the owner remove an admin', async () => {
+      memberships.first.mockResolvedValueOnce(ownerMembership).mockResolvedValueOnce(membership);
+      users.first.mockResolvedValueOnce(ana);
+
+      const result = await service.removeCurrentMember({ ...current, user_id: userId });
+
+      expect(memberships.delete).toHaveBeenCalled();
+      expect(result.user_id).toBe(userId);
+    });
+
+    it('rejects removing yourself with PERMISSION_DENIED', async () => {
+      memberships.first.mockResolvedValueOnce(ownerMembership);
+
+      await expectRpcError(service.removeCurrentMember({ ...current, user_id: ownerId }), status.PERMISSION_DENIED);
+      expect(memberships.delete).not.toHaveBeenCalled();
+    });
+
+    it('rejects an admin removing another admin with PERMISSION_DENIED', async () => {
+      memberships.first.mockResolvedValueOnce(adminMembership).mockResolvedValueOnce(membership);
+
+      await expectRpcError(service.removeCurrentMember({ ...current, user_id: userId }), status.PERMISSION_DENIED);
+      expect(memberships.delete).not.toHaveBeenCalled();
+    });
+  });
 });

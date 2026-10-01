@@ -38,7 +38,7 @@ describe('AuthController', () => {
 
   it('delegates Verify to the service with the token', async () => {
     await controller.verify({ token: 'a.b.c' });
-    expect(authService.verify).toHaveBeenCalledWith('a.b.c');
+    expect(authService.verify).toHaveBeenCalledWith('a.b.c', undefined);
   });
 
   it('delegates UpdateUserRole to the service', async () => {

@@ -48,6 +48,8 @@ export interface SwitchOrganizationRequest {
 
 export interface VerifyRequest {
   token: string;
+  /** Also list the user's active memberships (to pick an organization after a reload) */
+  include_memberships?: boolean | undefined;
 }
 
 export interface UpdateUserRoleRequest {
@@ -115,6 +117,17 @@ export interface AddMemberRequest {
   /** Only used (and then required) when no user has this email yet */
   name?: string | undefined;
   password?: string | undefined;
+}
+
+export interface CurrentOrganizationRequest {
+  requester_id: string;
+  organization_id: string;
+}
+
+export interface UpdateCurrentOrganizationRequest {
+  requester_id: string;
+  organization_id: string;
+  name: string;
 }
 
 export interface RemoveMemberRequest {
@@ -230,7 +243,10 @@ export function AuthServiceControllerMethods() {
 
 export const AUTH_SERVICE_NAME = "AuthService";
 
-/** Platform superadmin only (auth-ms checks requester_id against the database) */
+/**
+ * Platform superadmin only (auth-ms checks requester_id against the database), except the
+ * *Current* methods, which serve the owner and admins of the requester's organization
+ */
 
 export interface OrganizationsServiceClient {
   create(request: CreateOrganizationRequest): Observable<Organization>;
@@ -250,9 +266,32 @@ export interface OrganizationsServiceClient {
   findMembers(request: OrganizationById): Observable<MemberList>;
 
   removeMember(request: RemoveMemberRequest): Observable<Member>;
+
+  /**
+   * Scoped to the requester's own organization (organization_id comes from its token).
+   * auth-ms checks the requester's membership role against the database:
+   * owner and admin read the organization and its members; only the owner renames it
+   */
+
+  findCurrent(request: CurrentOrganizationRequest): Observable<Organization>;
+
+  updateCurrent(request: UpdateCurrentOrganizationRequest): Observable<Organization>;
+
+  findCurrentMembers(request: CurrentOrganizationRequest): Observable<MemberList>;
+
+  /** Owner: any role. Admin: only members with role user */
+
+  addCurrentMember(request: AddMemberRequest): Observable<Member>;
+
+  /** Owner: anyone but themselves. Admin: only members with role user */
+
+  removeCurrentMember(request: RemoveMemberRequest): Observable<Member>;
 }
 
-/** Platform superadmin only (auth-ms checks requester_id against the database) */
+/**
+ * Platform superadmin only (auth-ms checks requester_id against the database), except the
+ * *Current* methods, which serve the owner and admins of the requester's organization
+ */
 
 export interface OrganizationsServiceController {
   create(request: CreateOrganizationRequest): Promise<Organization> | Observable<Organization> | Organization;
@@ -276,6 +315,28 @@ export interface OrganizationsServiceController {
   findMembers(request: OrganizationById): Promise<MemberList> | Observable<MemberList> | MemberList;
 
   removeMember(request: RemoveMemberRequest): Promise<Member> | Observable<Member> | Member;
+
+  /**
+   * Scoped to the requester's own organization (organization_id comes from its token).
+   * auth-ms checks the requester's membership role against the database:
+   * owner and admin read the organization and its members; only the owner renames it
+   */
+
+  findCurrent(request: CurrentOrganizationRequest): Promise<Organization> | Observable<Organization> | Organization;
+
+  updateCurrent(
+    request: UpdateCurrentOrganizationRequest,
+  ): Promise<Organization> | Observable<Organization> | Organization;
+
+  findCurrentMembers(request: CurrentOrganizationRequest): Promise<MemberList> | Observable<MemberList> | MemberList;
+
+  /** Owner: any role. Admin: only members with role user */
+
+  addCurrentMember(request: AddMemberRequest): Promise<Member> | Observable<Member> | Member;
+
+  /** Owner: anyone but themselves. Admin: only members with role user */
+
+  removeCurrentMember(request: RemoveMemberRequest): Promise<Member> | Observable<Member> | Member;
 }
 
 export function OrganizationsServiceControllerMethods() {
@@ -288,6 +349,11 @@ export function OrganizationsServiceControllerMethods() {
       "addMember",
       "findMembers",
       "removeMember",
+      "findCurrent",
+      "updateCurrent",
+      "findCurrentMembers",
+      "addCurrentMember",
+      "removeCurrentMember",
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);

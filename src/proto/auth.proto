@@ -18,7 +18,8 @@ service AuthService {
   rpc UpdateUserRole (UpdateUserRoleRequest) returns (User);
 }
 
-// Platform superadmin only (auth-ms checks requester_id against the database)
+// Platform superadmin only (auth-ms checks requester_id against the database), except the
+// *Current* methods, which serve the owner and admins of the requester's organization
 service OrganizationsService {
   rpc Create (CreateOrganizationRequest) returns (Organization);
   // Every organization, newest first
@@ -29,6 +30,17 @@ service OrganizationsService {
   rpc AddMember (AddMemberRequest) returns (Member);
   rpc FindMembers (OrganizationById) returns (MemberList);
   rpc RemoveMember (RemoveMemberRequest) returns (Member);
+
+  // Scoped to the requester's own organization (organization_id comes from its token).
+  // auth-ms checks the requester's membership role against the database:
+  // owner and admin read the organization and its members; only the owner renames it
+  rpc FindCurrent (CurrentOrganizationRequest) returns (Organization);
+  rpc UpdateCurrent (UpdateCurrentOrganizationRequest) returns (Organization);
+  rpc FindCurrentMembers (CurrentOrganizationRequest) returns (MemberList);
+  // Owner: any role. Admin: only members with role user
+  rpc AddCurrentMember (AddMemberRequest) returns (Member);
+  // Owner: anyone but themselves. Admin: only members with role user
+  rpc RemoveCurrentMember (RemoveMemberRequest) returns (Member);
 }
 
 // Role inside an organization. owner: whole organization + role management. admin: full
@@ -64,6 +76,8 @@ message SwitchOrganizationRequest {
 
 message VerifyRequest {
   string token = 1;
+  // Also list the user's active memberships (to pick an organization after a reload)
+  optional bool include_memberships = 2;
 }
 
 message UpdateUserRoleRequest {
@@ -129,6 +143,17 @@ message AddMemberRequest {
   // Only used (and then required) when no user has this email yet
   optional string name = 5;
   optional string password = 6;
+}
+
+message CurrentOrganizationRequest {
+  string requester_id = 1;
+  string organization_id = 2;
+}
+
+message UpdateCurrentOrganizationRequest {
+  string requester_id = 1;
+  string organization_id = 2;
+  string name = 3;
 }
 
 message RemoveMemberRequest {

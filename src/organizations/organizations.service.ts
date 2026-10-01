@@ -11,23 +11,29 @@ import type {
 import {
   OrganizationStatus,
   PlatformRole,
+  Role,
   type Member,
   type MemberList,
   type Organization,
   type OrganizationList,
-  type Role,
 } from '../generated/proto/auth.js';
 import {
   AddMemberDto,
   CreateOrganizationDto,
+  CurrentOrganizationDto,
   OrganizationByIdDto,
   RemoveMemberDto,
   RequesterDto,
+  UpdateCurrentOrganizationDto,
   UpdateOrganizationStatusDto,
 } from './dto/index.js';
 
-// Platform administration: organizations and their members. Every method first checks
-// against the database that the requester is the superadmin (client-gateway checks it too)
+// Roles that can manage their own organization (FindCurrent, members)
+const MANAGER_ROLES: readonly string[] = [Role.owner, Role.admin];
+
+// Organizations and their members. The platform methods first check against the database
+// that the requester is the superadmin; the *Current* ones that it is an owner or admin of
+// its own organization (client-gateway checks both too)
 @Injectable()
 export class OrganizationsService {
   constructor(private readonly prisma: PrismaService) { }
@@ -71,8 +77,69 @@ export class OrganizationsService {
     return this.toOrganizationResponse({ ...organization, status: newStatus });
   }
 
-  async addMember({ requester_id, organization_id, email, role, name, password }: AddMemberDto): Promise<Member> {
+  async addMember(addMemberDto: AddMemberDto): Promise<Member> {
+    await this.assertSuperadmin(addMemberDto.requester_id);
+    return this.createMember(addMemberDto);
+  }
+
+  async findMembers({ requester_id, id }: OrganizationByIdDto): Promise<MemberList> {
     await this.assertSuperadmin(requester_id);
+    return this.listMembers(id);
+  }
+
+  async removeMember({ requester_id, organization_id, user_id }: RemoveMemberDto): Promise<Member> {
+    await this.assertSuperadmin(requester_id);
+    return this.deleteMember(organization_id, user_id);
+  }
+
+  async findCurrent({ requester_id, organization_id }: CurrentOrganizationDto): Promise<Organization> {
+    await this.assertMembershipRole(requester_id, organization_id, MANAGER_ROLES);
+    return this.toOrganizationResponse(await this.findOrganization(organization_id));
+  }
+
+  async updateCurrent({ requester_id, organization_id, name }: UpdateCurrentOrganizationDto): Promise<Organization> {
+    await this.assertMembershipRole(requester_id, organization_id, [Role.owner]);
+
+    // The slug identifies the organization and stays fixed
+    const organization = await this.findOrganization(organization_id);
+    await this.prisma.db.orm.organizations.where({ _id: organization_id }).update({ name });
+    return this.toOrganizationResponse({ ...organization, name });
+  }
+
+  async findCurrentMembers({ requester_id, organization_id }: CurrentOrganizationDto): Promise<MemberList> {
+    await this.assertMembershipRole(requester_id, organization_id, MANAGER_ROLES);
+    return this.listMembers(organization_id);
+  }
+
+  async addCurrentMember(addMemberDto: AddMemberDto): Promise<Member> {
+    const { requester_id, organization_id, role } = addMemberDto;
+    const requester = await this.assertMembershipRole(requester_id, organization_id, MANAGER_ROLES);
+
+    // Only an owner can hand out owner or admin
+    if (requester.role !== Role.owner && role !== Role.user) {
+      throw new RpcException({ code: status.PERMISSION_DENIED, message: 'An admin can only add members with role user' });
+    }
+    return this.createMember(addMemberDto);
+  }
+
+  async removeCurrentMember({ requester_id, organization_id, user_id }: RemoveMemberDto): Promise<Member> {
+    const requester = await this.assertMembershipRole(requester_id, organization_id, MANAGER_ROLES);
+
+    // An owner never removes themselves, so the organization never ends up without one
+    if (user_id === requester_id) {
+      throw new RpcException({ code: status.PERMISSION_DENIED, message: 'You cannot remove yourself' });
+    }
+
+    if (requester.role !== Role.owner) {
+      const target = await this.prisma.db.orm.memberships.where({ user_id, organization_id }).first();
+      if (target && target.role !== Role.user) {
+        throw new RpcException({ code: status.PERMISSION_DENIED, message: 'An admin can only remove members with role user' });
+      }
+    }
+    return this.deleteMember(organization_id, user_id);
+  }
+
+  private async createMember({ organization_id, email, role, name, password }: AddMemberDto): Promise<Member> {
     await this.findOrganization(organization_id);
 
     // An existing user keeps its name and password: only the membership is added
@@ -111,8 +178,7 @@ export class OrganizationsService {
     return this.toMemberResponse(user, membership);
   }
 
-  async findMembers({ requester_id, id }: OrganizationByIdDto): Promise<MemberList> {
-    await this.assertSuperadmin(requester_id);
+  private async listMembers(id: string): Promise<MemberList> {
     await this.findOrganization(id);
 
     const memberships = await this.prisma.db.orm.memberships.where({ organization_id: id }).all();
@@ -125,9 +191,7 @@ export class OrganizationsService {
     return { data: members.filter((member): member is Member => member !== null) };
   }
 
-  async removeMember({ requester_id, organization_id, user_id }: RemoveMemberDto): Promise<Member> {
-    await this.assertSuperadmin(requester_id);
-
+  private async deleteMember(organization_id: string, user_id: string): Promise<Member> {
     const membership = await this.prisma.db.orm.memberships.where({ user_id, organization_id }).first();
     const user = membership && (await this.prisma.db.orm.users.where({ _id: user_id }).first());
     if (!membership || !user) {
@@ -147,6 +211,19 @@ export class OrganizationsService {
     if (requester?.platform_role !== PlatformRole.superadmin) {
       throw new RpcException({ code: status.PERMISSION_DENIED, message: 'Only the platform superadmin can manage organizations' });
     }
+  }
+
+  // The requester's membership in the organization when its role is one of `roles`
+  private async assertMembershipRole(
+    requester_id: string,
+    organization_id: string,
+    roles: readonly string[],
+  ): Promise<MembershipDocument> {
+    const membership = await this.prisma.db.orm.memberships.where({ user_id: requester_id, organization_id }).first();
+    if (!membership || !roles.includes(membership.role)) {
+      throw new RpcException({ code: status.PERMISSION_DENIED, message: 'You cannot manage this organization' });
+    }
+    return membership;
   }
 
   private async findOrganization(id: string): Promise<OrganizationDocument> {

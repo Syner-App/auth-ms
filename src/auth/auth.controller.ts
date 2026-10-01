@@ -19,8 +19,8 @@ export class AuthController {
   }
 
   @GrpcMethod(AUTH_SERVICE_NAME, 'Verify')
-  verify(@Payload() { token }: VerifyTokenDto) {
-    return this.authService.verify(token);
+  verify(@Payload() { token, include_memberships }: VerifyTokenDto) {
+    return this.authService.verify(token, include_memberships);
   }
 
   @GrpcMethod(AUTH_SERVICE_NAME, 'UpdateUserRole')
